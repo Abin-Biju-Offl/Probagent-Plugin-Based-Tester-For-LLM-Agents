@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "sources": {
+    "orders": {
+      "rules": "../../fixtures/dq/orders_rules.json",
+      "on_fail": "block"
+    }
+  }
+}

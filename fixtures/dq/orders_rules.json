@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "name": "orders",
+  "allow_extra_columns": true,
+  "check_duplicate_rows": true,
+  "fields": {
+    "order_id":   { "type": "integer", "required": true, "unique": true },
+    "email":      { "type": "string",  "required": true, "pattern": "email" },
+    "quantity":   { "type": "integer", "required": true, "min": 1, "max": 1000 },
+    "price":      { "type": "number",  "min": 0 },
+    "status":     { "type": "string",  "allowed": ["pending", "shipped", "cancelled"] },
+    "country":    { "type": "string",  "min_length": 2, "max_length": 2 },
+    "order_date": { "type": "date",    "format": "YYYY-MM-DD", "required": true },
+    "notes":      { "type": "string",  "max_length": 200 }
+  }
+}

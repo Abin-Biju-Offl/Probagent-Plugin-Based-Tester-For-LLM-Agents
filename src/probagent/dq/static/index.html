@@ -1,0 +1,715 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Quality Check</title>
+<style>
+  /* ---------- Colors and basics ---------- */
+  :root {
+    --bg: #f5f6f8;
+    --card: #ffffff;
+    --text: #1d2330;
+    --muted: #5f6b7a;
+    --border: #d9dee5;
+    --accent: #2f5bea;
+    --ok: #1b7f4b;
+    --ok-bg: #e7f6ee;
+    --bad: #b42318;
+    --bad-bg: #fdecea;
+    --warn: #8a5a00;
+    --warn-bg: #fff6e0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 0 0 12px; display: flex; align-items: center; gap: 10px; }
+  .subtitle { color: var(--muted); margin: 0 0 20px; }
+  .step {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-size: 14px;
+  }
+  section {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px 20px; margin-bottom: 16px;
+  }
+  label { font-weight: 600; font-size: 14px; }
+  .hint { color: var(--muted); font-size: 13px; font-weight: normal; }
+  input[type=text], input[type=password], select, textarea {
+    font: inherit; padding: 7px 10px; border: 1px solid var(--border);
+    border-radius: 6px; background: #fff; color: var(--text);
+  }
+  textarea {
+    width: 100%; min-height: 320px; resize: vertical;
+    font-family: ui-monospace, Consolas, monospace; font-size: 13px;
+  }
+  button, .button {
+    font: inherit; font-size: 14px; padding: 7px 14px; border-radius: 6px;
+    border: 1px solid var(--border); background: #fff; color: var(--text); cursor: pointer;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 10px; }
+  .grow { flex: 1; min-width: 200px; }
+
+  /* ---------- Tabs ---------- */
+  .tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+  .tabs button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  /* ---------- Status messages ---------- */
+  .status { margin: 8px 0 0; padding: 8px 12px; border-radius: 6px; font-size: 14px; }
+  .status:empty { display: none; }
+  .status.ok { background: var(--ok-bg); color: var(--ok); }
+  .status.bad { background: var(--bad-bg); color: var(--bad); }
+  .status.warn { background: var(--warn-bg); color: var(--warn); }
+  .status ul { margin: 4px 0 0; padding-left: 20px; }
+  .token-box {
+    border: 1px solid var(--warn); background: var(--warn-bg);
+    border-radius: 8px; padding: 12px; margin-top: 10px;
+  }
+
+  /* ---------- Rules editor ---------- */
+  .rules-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+  .notes { background: var(--bg); border-radius: 8px; padding: 12px; font-size: 13px; }
+  .notes h3 { font-size: 14px; margin: 0 0 6px; }
+  .notes ul { margin: 0; padding-left: 18px; }
+  .notes li { margin-bottom: 6px; }
+
+  /* ---------- Column checkboxes ---------- */
+  .columns-box { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 14px; }
+  .column-list {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 4px 12px; max-height: 220px; overflow-y: auto; margin-top: 8px;
+  }
+  .column-list label { font-weight: normal; display: flex; gap: 6px; align-items: center; overflow-wrap: anywhere; }
+  @media (max-width: 760px) { .rules-grid { grid-template-columns: 1fr; } }
+
+  /* ---------- Tables ---------- */
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--bg); font-weight: 600; }
+  td.value { font-family: ui-monospace, Consolas, monospace; word-break: break-all; }
+  .code { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--muted); }
+
+  /* ---------- Results ---------- */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .card { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .card .number { font-size: 22px; font-weight: 700; }
+  .card .label { color: var(--muted); font-size: 13px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .chip { background: var(--bg); border-radius: 999px; padding: 2px 10px; font-size: 13px; }
+  .report-meta { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
+  .print-only { display: none; }
+  .all-clean { padding: 16px; text-align: center; color: var(--ok); background: var(--ok-bg); border-radius: 8px; }
+
+  /* ---------- Print: only the report, black on white ---------- */
+  @media print {
+    body { background: #fff; color: #000; font-size: 11pt; }
+    main { padding: 0; max-width: none; }
+    header, #source, #rules, #run, .no-print { display: none !important; }
+    section { border: none; padding: 0; }
+    .print-only { display: block; }
+    .card, .chip { border: 1px solid #999; background: none; }
+    th { background: none; border-bottom: 2px solid #000; }
+    td { border-bottom: 1px solid #999; }
+    .code, .report-meta { color: #000; }
+    thead { display: table-header-group; }   /* repeat the header on every page */
+    tr { break-inside: avoid; }              /* don't split a row across pages */
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Probagent · Data Quality Check</h1>
+    <p class="subtitle">Load your data, describe what good data looks like, and see every problem.</p>
+  </header>
+
+  <!-- ① DATA SOURCE -->
+  <section id="source">
+    <h2><span class="step">1</span> Data source</h2>
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" aria-selected="true" data-tab="upload-panel">Upload CSV</button>
+      <button type="button" role="tab" aria-selected="false" data-tab="api-panel">REST API</button>
+    </div>
+
+    <div id="upload-panel">
+      <div class="row">
+        <label for="csv-file">CSV file</label>
+        <input type="file" id="csv-file" accept=".csv,text/csv">
+        <span class="hint">Max 10 MB · 50,000 rows</span>
+      </div>
+    </div>
+
+    <div id="api-panel" hidden>
+      <div class="row">
+        <label for="api-url">URL</label>
+        <input type="text" id="api-url" class="grow" placeholder="https://api.example.com/orders">
+      </div>
+      <div class="row">
+        <label for="api-path">Data path</label>
+        <input type="text" id="api-path" placeholder="e.g. data or data.items">
+        <span class="hint">Where the list of records is in the JSON. Leave empty if the response is the list.</span>
+      </div>
+      <button type="button" class="primary" id="fetch-button">Fetch</button>
+
+      <!-- Shown only after the API answers 401 / 403 -->
+      <div class="token-box" id="token-box" hidden>
+        <p id="token-message" style="margin:0 0 8px">🔒 This API needs a login.</p>
+        <div class="row">
+          <label for="api-token">JWT token</label>
+          <input type="password" id="api-token" class="grow" autocomplete="off" placeholder="eyJhbGciOi...">
+          <button type="button" class="primary" id="retry-button">Retry with token</button>
+        </div>
+        <div class="hint" id="token-hint">The token is sent once with this request and never saved.</div>
+      </div>
+    </div>
+
+    <div class="status" id="source-status"></div>
+    <div id="data-panel" hidden>
+      <p id="data-info" style="font-weight:600;margin:12px 0 6px"></p>
+      <p class="hint" style="margin:0 0 6px">Preview: first 10 rows</p>
+      <div class="table-wrap"><table id="preview-table"></table></div>
+    </div>
+  </section>
+
+  <!-- ② RULES -->
+  <section id="rules">
+    <h2><span class="step">2</span> Rules</h2>
+
+    <!-- Shown once data is loaded. Only ticked columns get rules and get checked. -->
+    <div class="columns-box" id="columns-box" hidden>
+      <div class="row" style="margin-bottom:0">
+        <label>Columns to use</label>
+        <span class="hint" id="columns-count"></span>
+        <button type="button" id="tick-all">Tick all</button>
+        <button type="button" id="untick-all">Untick all</button>
+      </div>
+      <div class="hint">Only ticked columns get generated rules and are checked.</div>
+      <div class="column-list" id="column-list"></div>
+    </div>
+
+    <div class="row">
+      <label for="sample-file">Generate from sample</label>
+      <input type="file" id="sample-file" accept=".csv,text/csv">
+      <button type="button" id="infer-button">Generate rules</button>
+      <span class="hint">No file chosen? The data from step 1 is used.</span>
+    </div>
+
+    <div class="rules-grid">
+      <div>
+        <label for="rules-editor">Rules (JSON)</label>
+        <textarea id="rules-editor" spellcheck="false"></textarea>
+        <div class="status" id="rules-status"></div>
+      </div>
+      <aside class="notes" id="notes-panel">
+        <h3>Notes</h3>
+        <p class="hint" id="notes-empty" style="margin:0">Generated rules come with notes here. Review them before running the check: rules are only as good as the sample.</p>
+        <ul id="notes-list"></ul>
+      </aside>
+    </div>
+
+    <div class="row" style="margin-top:12px">
+      <button type="button" id="download-rules">Download rules.json</button>
+      <label class="button" style="font-weight:normal">
+        Load rules.json <input type="file" id="load-rules" accept=".json,application/json" hidden>
+      </label>
+    </div>
+  </section>
+
+  <!-- ③ RUN -->
+  <section id="run">
+    <h2><span class="step">3</span> Run check</h2>
+    <button type="button" class="primary" id="run-button" disabled>Run check</button>
+    <span class="hint" id="run-hint">Load data and enter valid rules first.</span>
+    <div class="status" id="run-status"></div>
+  </section>
+
+  <!-- ④ RESULTS -->
+  <section id="results" hidden>
+    <h2 class="no-print"><span class="step">4</span> Results
+      <button type="button" id="print-button" style="margin-left:auto">🖨 Print</button>
+    </h2>
+    <div class="print-only"><h1>Data Quality Report</h1></div>
+    <div class="report-meta" id="report-meta"></div>
+    <div class="cards" id="summary-cards"></div>
+    <div class="chips" id="column-chips"></div>
+    <div class="status warn" id="report-warnings"></div>
+
+    <div class="row no-print">
+      <label for="filter-column">Filter</label>
+      <select id="filter-column"></select>
+      <select id="filter-code"></select>
+    </div>
+    <p class="hint">Row numbers count data rows from 1 (the header row is not counted).</p>
+    <p id="truncated-note" class="status warn"></p>
+    <div class="table-wrap"><table id="issues-table"></table></div>
+  </section>
+</main>
+
+<script>
+// ------------------------------------------------------------------
+// Everything the page remembers. Nothing is saved in the browser.
+// ------------------------------------------------------------------
+const state = {
+  datasetId: null,     // id of the data loaded in step 1 (kept on the server)
+  rulesValid: false,   // did the server accept the rules in the editor?
+  report: null,        // the latest report from step 3
+};
+
+const $ = (id) => document.getElementById(id);
+
+const EXAMPLE_RULES = {
+  version: 1,
+  name: "my_rules",
+  fields: {
+    column_name: { type: "string", required: true }
+  }
+};
+
+// ------------------------------------------------------------------
+// Small helpers
+// ------------------------------------------------------------------
+
+// Make an element. Text always goes in with textContent, never innerHTML,
+// so data like "<script>" is shown as text and never runs.
+function el(tag, text, className) {
+  const node = document.createElement(tag);
+  if (text !== undefined && text !== null) node.textContent = text;
+  if (className) node.className = className;
+  return node;
+}
+
+// Show a message in a status box. kind: "ok", "bad" or "warn". items: optional list.
+function setStatus(box, kind, message, items) {
+  box.replaceChildren();
+  box.className = "status " + (kind || "");
+  if (!message) return;
+  box.append(el("div", message));
+  if (items && items.length) {
+    const list = el("ul");
+    items.forEach((item) => list.append(el("li", item)));
+    box.append(list);
+  }
+}
+
+// Call our API. Returns { ok, data }. Never throws.
+async function callApi(path, options) {
+  try {
+    const response = await fetch(path, options);
+    const data = await response.json();
+    return { ok: response.ok, data };
+  } catch (error) {
+    return { ok: false, data: { error: "network", message: "Could not reach the server. Is it still running?" } };
+  }
+}
+
+function postJson(path, body) {
+  return callApi(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+// Fill a <table> with a header row and body rows (arrays of text).
+function fillTable(table, headers, rows) {
+  table.replaceChildren();
+  const head = el("thead");
+  const headRow = el("tr");
+  headers.forEach((h) => headRow.append(el("th", h)));
+  head.append(headRow);
+  const body = el("tbody");
+  rows.forEach((cells) => {
+    const tr = el("tr");
+    cells.forEach((cell) => tr.append(el("td", cell)));
+    body.append(tr);
+  });
+  table.append(head, body);
+}
+
+function shorten(text, max) {
+  return text.length > max ? text.slice(0, max) + "…" : text;
+}
+
+// ------------------------------------------------------------------
+// ① Data source
+// ------------------------------------------------------------------
+
+// Tabs: show one panel, hide the other.
+document.querySelectorAll(".tabs button").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tabs button").forEach((other) => {
+      const selected = other === tab;
+      other.setAttribute("aria-selected", selected);
+      $(other.dataset.tab).hidden = !selected;
+    });
+  });
+});
+
+// Upload a CSV as soon as a file is chosen.
+$("csv-file").addEventListener("change", async () => {
+  const file = $("csv-file").files[0];
+  if (!file) return;
+  setStatus($("source-status"), "", "Loading " + file.name + "…");
+  const form = new FormData();
+  form.append("file", file);
+  const { ok, data } = await callApi("/api/data/upload", { method: "POST", body: form });
+  if (ok) showLoadedData(data);
+  else showDataError(data.message);
+});
+
+// Fetch from a REST API. First without a token; the token box only
+// appears if the API answers 401 or 403.
+$("fetch-button").addEventListener("click", () => fetchFromApi(null));
+$("retry-button").addEventListener("click", () => fetchFromApi($("api-token").value));
+$("api-token").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") fetchFromApi($("api-token").value);
+});
+
+// Soft warning: a JWT normally looks like xxx.yyy.zzz. We still send it either way.
+$("api-token").addEventListener("input", () => {
+  const value = $("api-token").value.trim();
+  const looksLikeJwt = value === "" || value.split(".").length === 3;
+  $("token-hint").textContent = looksLikeJwt
+    ? "The token is sent once with this request and never saved."
+    : "⚠ This doesn't look like a JWT (xxx.yyy.zzz). It will still be sent.";
+});
+
+async function fetchFromApi(token) {
+  const url = $("api-url").value.trim();
+  if (!url) {
+    setStatus($("source-status"), "bad", "Enter the API URL first.");
+    return;
+  }
+  setStatus($("source-status"), "", "Fetching…");
+  const { ok, data } = await postJson("/api/data/fetch", {
+    url: url,
+    data_path: $("api-path").value.trim(),
+    token: token || null,
+  });
+  $("api-token").value = "";   // never keep the token around
+
+  if (ok) {
+    $("token-box").hidden = true;
+    showLoadedData(data);
+  } else if (data.error === "auth_required" || data.error === "auth_failed") {
+    $("token-box").hidden = false;
+    $("token-message").textContent = "🔒 " + data.message;
+    setStatus($("source-status"), data.error === "auth_failed" ? "bad" : "warn",
+              "The API answered HTTP " + data.status + ".");
+    $("api-token").focus();
+  } else {
+    $("token-box").hidden = true;   // a token would not fix this kind of error
+    showDataError(data.message);
+  }
+}
+
+function showLoadedData(data) {
+  state.datasetId = data.dataset_id;
+  setStatus($("source-status"), data.warnings.length ? "warn" : "ok",
+            data.warnings.length ? "Loaded, with warnings:" : "Data loaded.", data.warnings);
+  $("data-info").textContent =
+    data.source + " · " + data.row_count.toLocaleString() + " rows · " + data.columns.length + " columns";
+  fillTable($("preview-table"), data.columns,
+            data.preview.map((row) => row.map((value) => shorten(value, 40))));
+  $("data-panel").hidden = false;
+  $("results").hidden = true;
+  showColumnCheckboxes(data.columns);
+  updateRunButton();
+}
+
+function showDataError(message) {
+  state.datasetId = null;
+  $("data-panel").hidden = true;
+  $("columns-box").hidden = true;
+  setStatus($("source-status"), "bad", message);
+  updateRunButton();
+}
+
+// ------------------------------------------------------------------
+// ② Rules
+// ------------------------------------------------------------------
+
+// One checkbox per column of the loaded data, all ticked to start with.
+function showColumnCheckboxes(columns) {
+  const list = $("column-list");
+  list.replaceChildren();
+  columns.forEach((name) => {
+    const box = el("input");
+    box.type = "checkbox";
+    box.checked = true;
+    box.value = name;
+    box.addEventListener("change", columnsChanged);
+    const label = el("label");
+    label.append(box, document.createTextNode(name));
+    list.append(label);
+  });
+  $("columns-box").hidden = false;
+  columnsChanged();
+}
+
+function columnCheckboxes() {
+  return [...$("column-list").querySelectorAll("input[type=checkbox]")];
+}
+
+function tickedColumns() {
+  return columnCheckboxes().filter((box) => box.checked).map((box) => box.value);
+}
+
+// What to send to the server: null means "all columns".
+function columnsForRequest() {
+  const boxes = columnCheckboxes();
+  const ticked = tickedColumns();
+  return boxes.length === 0 || ticked.length === boxes.length ? null : ticked;
+}
+
+function columnsChanged() {
+  $("columns-count").textContent =
+    tickedColumns().length + " of " + columnCheckboxes().length + " ticked";
+  updateRunButton();
+}
+
+function tickAll(checked) {
+  columnCheckboxes().forEach((box) => { box.checked = checked; });
+  columnsChanged();
+}
+$("tick-all").addEventListener("click", () => tickAll(true));
+$("untick-all").addEventListener("click", () => tickAll(false));
+
+$("rules-editor").value = JSON.stringify(EXAMPLE_RULES, null, 2);
+
+// Check the rules shortly after the user stops typing.
+let validateTimer = null;
+$("rules-editor").addEventListener("input", () => {
+  state.rulesValid = false;
+  updateRunButton();
+  clearTimeout(validateTimer);
+  validateTimer = setTimeout(validateRules, 400);
+});
+
+async function validateRules() {
+  let rules;
+  try {
+    rules = JSON.parse($("rules-editor").value);
+  } catch (error) {
+    state.rulesValid = false;
+    setStatus($("rules-status"), "bad", "This is not valid JSON: " + error.message);
+    updateRunButton();
+    return;
+  }
+  const { data } = await postJson("/api/rules/validate", rules);
+  state.rulesValid = data.ok === true;
+  if (state.rulesValid) setStatus($("rules-status"), "ok", "✓ Rules are valid.");
+  else setStatus($("rules-status"), "bad", "The rules have problems:", data.errors);
+  updateRunButton();
+}
+
+// Generate rules from a sample CSV (or from the loaded data).
+$("infer-button").addEventListener("click", async () => {
+  const form = new FormData();
+  const sample = $("sample-file").files[0];
+  if (sample) form.append("file", sample);
+  else if (state.datasetId) form.append("dataset_id", state.datasetId);
+  else {
+    setStatus($("rules-status"), "bad", "Choose a sample CSV, or load data in step 1 first.");
+    return;
+  }
+  const columns = columnsForRequest();
+  if (columns !== null && columns.length === 0) {
+    setStatus($("rules-status"), "bad", "Tick at least one column first.");
+    return;
+  }
+  if (columns !== null) columns.forEach((name) => form.append("columns", name));
+
+  setStatus($("rules-status"), "", "Studying the sample…");
+  const { ok, data } = await callApi("/api/rules/infer", { method: "POST", body: form });
+  if (!ok) {
+    setStatus($("rules-status"), "bad", data.message);
+    return;
+  }
+  $("rules-editor").value = JSON.stringify(data.ruleset, null, 2);
+  showNotes(data.notes);
+  await validateRules();
+});
+
+function showNotes(notes) {
+  const list = $("notes-list");
+  list.replaceChildren();
+  Object.entries(notes).forEach(([column, columnNotes]) => {
+    columnNotes.forEach((note) => {
+      const item = el("li");
+      item.append(el("strong", column + ": "), document.createTextNode(note));
+      list.append(item);
+    });
+  });
+  $("notes-empty").textContent = list.children.length
+    ? "Review these before running the check."
+    : "No notes. Still review the rules before running the check.";
+}
+
+// Download the rules in the editor as a file.
+$("download-rules").addEventListener("click", () => {
+  let name = "rules";
+  try { name = JSON.parse($("rules-editor").value).name || name; } catch (e) { /* keep default */ }
+  const blob = new Blob([$("rules-editor").value], { type: "application/json" });
+  const link = el("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = name + ".json";
+  link.click();
+  URL.revokeObjectURL(link.href);
+});
+
+// Load a rules file into the editor.
+$("load-rules").addEventListener("change", async () => {
+  const file = $("load-rules").files[0];
+  if (!file) return;
+  $("rules-editor").value = await file.text();
+  $("load-rules").value = "";
+  showNotes({});
+  await validateRules();
+});
+
+// ------------------------------------------------------------------
+// ③ Run check
+// ------------------------------------------------------------------
+
+function updateRunButton() {
+  const hasColumns = tickedColumns().length > 0;
+  const ready = Boolean(state.datasetId) && state.rulesValid && hasColumns;
+  $("run-button").disabled = !ready;
+  $("run-hint").textContent = ready ? "" :
+    !state.datasetId ? "Load data in step 1 first." :
+    !hasColumns ? "Tick at least one column in step 2." : "Fix the rules in step 2 first.";
+}
+
+$("run-button").addEventListener("click", async () => {
+  setStatus($("run-status"), "", "Checking…");
+  const { ok, data } = await postJson("/api/check", {
+    dataset_id: state.datasetId,
+    ruleset: JSON.parse($("rules-editor").value),
+    columns: columnsForRequest(),
+  });
+  if (!ok) {
+    if (data.error === "dataset_not_found") showDataError(data.message);
+    setStatus($("run-status"), "bad", data.message, data.errors);
+    return;
+  }
+  setStatus($("run-status"), "", "");
+  state.report = data;
+  showReport(data);
+});
+
+// ------------------------------------------------------------------
+// ④ Results
+// ------------------------------------------------------------------
+
+function showReport(report) {
+  const s = report.summary;
+  $("report-meta").textContent =
+    "Source: " + report.source + "  ·  Rules: " + report.ruleset_name +
+    "  ·  Checked: " + report.checked_at.replace("T", " ") +
+    "  ·  Columns: " + (report.columns ? report.columns.join(", ") : "all");
+
+  // Summary cards
+  const cards = $("summary-cards");
+  cards.replaceChildren();
+  [
+    [s.rows_checked.toLocaleString(), "rows checked"],
+    [s.issue_count.toLocaleString(), "issues"],
+    [(s.rows_checked - s.rows_with_issues).toLocaleString(), "clean rows"],
+    [s.clean_rows_pct + "%", "clean"],
+  ].forEach(([number, label]) => {
+    const card = el("div", null, "card");
+    card.append(el("div", number, "number"), el("div", label, "label"));
+    cards.append(card);
+  });
+
+  // Issues per column, biggest first
+  const chips = $("column-chips");
+  chips.replaceChildren();
+  Object.entries(report.by_column)
+    .sort((a, b) => b[1] - a[1])
+    .forEach(([column, count]) => chips.append(el("span", column + ": " + count, "chip")));
+
+  setStatus($("report-warnings"), "warn", report.warnings.length ? "Warnings:" : "", report.warnings);
+
+  $("truncated-note").textContent = report.truncated
+    ? "Showing the first " + report.issues.length + " of " + s.issue_count.toLocaleString() +
+      " issues. The counts above include all of them."
+    : "";
+
+  fillFilter($("filter-column"), "All columns", report.issues.map((i) => i.column || "(whole row)"));
+  fillFilter($("filter-code"), "All issue types", report.issues.map((i) => i.code));
+
+  showIssues(filteredIssues());
+  $("results").hidden = false;
+  $("results").scrollIntoView({ behavior: "smooth" });
+}
+
+function fillFilter(select, allLabel, values) {
+  select.replaceChildren(el("option", allLabel));
+  select.firstChild.value = "";
+  [...new Set(values)].sort().forEach((value) => {
+    const option = el("option", value);
+    option.value = value;
+    select.append(option);
+  });
+}
+
+function filteredIssues() {
+  const column = $("filter-column").value;
+  const code = $("filter-code").value;
+  return state.report.issues.filter((issue) =>
+    (!column || (issue.column || "(whole row)") === column) && (!code || issue.code === code));
+}
+
+$("filter-column").addEventListener("change", () => showIssues(filteredIssues()));
+$("filter-code").addEventListener("change", () => showIssues(filteredIssues()));
+
+function showIssues(issues) {
+  const table = $("issues-table");
+  table.replaceChildren();
+  if (state.report.summary.issue_count === 0) {
+    table.append(el("caption", "✓ No issues found. The data follows every rule.", "all-clean"));
+    return;
+  }
+  const head = el("thead");
+  const headRow = el("tr");
+  ["Row", "Column", "Value", "Problem"].forEach((h) => headRow.append(el("th", h)));
+  head.append(headRow);
+
+  const body = el("tbody");
+  issues.forEach((issue) => {
+    const tr = el("tr");
+    tr.append(el("td", issue.row ?? "—"));
+    tr.append(el("td", issue.column ?? "—"));
+    const valueCell = el("td", issue.value == null ? "" : shorten(issue.value, 40), "value");
+    if (issue.value) valueCell.title = issue.value;   // hover shows the full value
+    tr.append(valueCell);
+    const problem = el("td", issue.message);
+    problem.append(el("div", issue.code, "code"));
+    tr.append(problem);
+    body.append(tr);
+  });
+  table.append(head, body);
+}
+
+// Print: the browser's print dialog (it can also "Save as PDF").
+// The printout always shows every listed issue, ignoring the filters.
+$("print-button").addEventListener("click", () => window.print());
+window.addEventListener("beforeprint", () => { if (state.report) showIssues(state.report.issues); });
+window.addEventListener("afterprint", () => { if (state.report) showIssues(filteredIssues()); });
+
+validateRules();
+</script>
+</body>
+</html>

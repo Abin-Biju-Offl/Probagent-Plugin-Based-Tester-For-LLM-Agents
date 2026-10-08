@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "probagent"
+version = "0.1.0"
+description = "Probagent: data quality checks and evals for LLM agents"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "httpx>=0.27",
+    "pydantic>=2.6",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+langgraph = ["langgraph>=1.0,<2"]   # for probagent.guard.langgraph
+
+[project.scripts]
+probagent = "probagent.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"probagent.dq" = ["static/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
