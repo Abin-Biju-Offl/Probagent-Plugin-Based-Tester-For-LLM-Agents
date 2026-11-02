@@ -1,0 +1,173 @@
+"""Create the demo files in this folder. Synthetic data only.
+
+    python demo/make_demo_data.py
+
+Writes:
+    customers_clean.csv     50 rows with no issues (random seed 7, so always the same)
+    customers_partial.csv   the same rows with a few small mistakes
+    customers_dirty.csv     the same rows with many problems of every kind
+    README.md               how to use the files, and the exact issues each one has
+
+customers_rules.json is written by hand; this script does not change it.
+"""
+
+import csv
+import random
+from datetime import date, timedelta
+from pathlib import Path
+
+HERE = Path(__file__).parent
+ROW_COUNT = 50
+COLUMNS = ["customer_id", "customer_code", "full_name", "email", "phone", "age",
+           "plan", "is_active", "signup_date", "website"]
+FIRST_NAMES = ["Aarav", "Priya", "Liam", "Sofia", "Kenji", "Amara", "Lucas", "Fatima",
+               "Noah", "Meera", "Elena", "Omar", "Chloe", "Ravi", "Hana", "Diego"]
+LAST_NAMES = ["Sharma", "Nair", "Smith", "Rossi", "Tanaka", "Okafor", "Silva", "Khan",
+              "Brown", "Iyer", "Petrov", "Haddad", "Martin", "Menon", "Kim", "Lopez"]
+
+# Each seeded problem: (row, column, new value, expected issue code, why).
+# Rows are data rows starting at 1 (the header is not counted).
+# A value of None means "copy from another row" (see copy_value_from).
+PARTIAL_CHANGES = [
+    (8, "plan", "Pro", "not_allowed", "Plan written with a capital letter"),
+    (23, "age", "17", "below_min", "Customer younger than 18"),
+    (37, "phone", "12345", "pattern_mismatch", "Phone number too short"),
+]
+
+DIRTY_CHANGES = [
+    (3, "customer_id", "abc", "wrong_type", "ID written as letters"),
+    (7, "full_name", "", "missing_value", "Required name is empty"),
+    (9, "email", "maria.gmail.com", "pattern_mismatch", "Email without an @"),
+    (12, "phone", "call me", "pattern_mismatch", "Text instead of a phone number"),
+    (15, "age", "-4", "below_min", "Negative age"),
+    (18, "age", "250", "above_max", "Age above 120"),
+    (21, "plan", "gold", "not_allowed", "Plan that does not exist"),
+    (24, "is_active", "maybe", "wrong_type", "Not true or false"),
+    (27, "signup_date", "2026-13-01", "bad_date", "Month 13 does not exist"),
+    (30, "signup_date", "15/03/2024", "wrong_type", "Date in the wrong format"),
+    (33, "signup_date", "2019-05-10", "below_min", "Signed up before the company existed"),
+    (36, "website", "www.example", "pattern_mismatch", "Website without http(s)://"),
+    (39, "customer_code", "CUS-12", "pattern_mismatch", "Code must be CUS- and 4 digits"),
+    (42, "customer_id", None, "duplicate_value", "Same customer_id as row 10"),
+    (44, "email", None, "duplicate_value", "Same email as row 5"),
+    (46, "full_name", "A", "too_short", "Name with 1 character"),
+]
+copy_value_from = {(42, "customer_id"): 10, (44, "email"): 5}
+DUPLICATE_OF_ROW = 20          # in the dirty file, an exact copy of this row is added at the end
+
+
+def make_clean_rows() -> list[dict]:
+    rng = random.Random(7)
+    rows = []
+    for n in range(1, ROW_COUNT + 1):
+        first, last = rng.choice(FIRST_NAMES), rng.choice(LAST_NAMES)
+        rows.append({
+            "customer_id": str(500 + n),
+            "customer_code": f"CUS-{1000 + n * 7}",
+            "full_name": f"{first} {last}",
+            "email": f"{first.lower()}.{last.lower()}{n}@example.com",
+            "phone": f"+{rng.choice(['91', '44', '1'])} {rng.randint(70000, 99999)} "
+                     f"{rng.randint(10000, 99999)}",
+            "age": str(rng.randint(18, 75)),
+            "plan": rng.choice(["free", "pro", "enterprise"]),
+            "is_active": rng.choice(["true", "true", "true", "false"]),
+            "signup_date": (date(2021, 1, 1) + timedelta(days=rng.randint(0, 2000))).isoformat(),
+            "website": f"https://{last.lower()}{n}.example.com" if rng.random() < 0.6 else "",
+        })
+    return rows
+
+
+def apply_changes(clean: list[dict], changes: list[tuple]) -> tuple[list[dict], list[tuple]]:
+    rows = [dict(row) for row in clean]
+    expected = []
+    for row_number, column, value, code, why in changes:
+        if value is None:
+            value = rows[copy_value_from[(row_number, column)] - 1][column]
+        rows[row_number - 1][column] = value
+        expected.append((row_number, column, code, why))
+    return rows, expected
+
+
+def write_csv(path: Path, rows: list[dict]) -> None:
+    with path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=COLUMNS)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def issue_table(expected: list[tuple]) -> list[str]:
+    lines = ["| Row | Column | Code | Why |", "|---|---|---|---|"]
+    return lines + [f"| {row} | {column} | {code} | {why} |" for row, column, code, why in expected]
+
+
+def write_readme(path: Path, partial: list[tuple], dirty: list[tuple]) -> None:
+    lines = [
+        "# Demo data: customers",
+        "",
+        "Synthetic data for showing Probagent. Generated by `make_demo_data.py` "
+        "(run it again to rebuild the CSV files and this page).",
+        "",
+        "| File | Rows | Issues | Use it to show |",
+        "|---|---|---|---|",
+        f"| `customers_clean.csv` | {ROW_COUNT} | 0 | Good data passes |",
+        f"| `customers_partial.csv` | {ROW_COUNT} | {len(partial)} | Small, realistic mistakes are caught |",
+        f"| `customers_dirty.csv` | {ROW_COUNT + 1} | {len(dirty)} | Every kind of problem is caught |",
+        "| `customers_rules.json` | | | The rules all three are checked against |",
+        "",
+        "## Try it",
+        "",
+        "Web page: run `probagent dq-serve --demo`, open http://127.0.0.1:8765, upload a CSV, "
+        "click **Load rules.json** and pick `customers_rules.json`, then **Run check**.",
+        "",
+        "Terminal:",
+        "",
+        "```powershell",
+        "probagent lint-data demo\\customers_clean.csv   --rules demo\\customers_rules.json   # exit 0",
+        "probagent lint-data demo\\customers_partial.csv --rules demo\\customers_rules.json   # exit 1",
+        "probagent lint-data demo\\customers_dirty.csv   --rules demo\\customers_rules.json   # exit 1",
+        "```",
+        "",
+        "## The rules",
+        "",
+        "| Column | Rule |",
+        "|---|---|",
+        "| `customer_id` | Whole number, required, unique |",
+        "| `customer_code` | Required, `CUS-` and 4 digits (custom regex) |",
+        "| `full_name` | Required, 2 to 60 characters |",
+        "| `email` | Required, valid email, unique |",
+        "| `phone` | Optional, valid phone number |",
+        "| `age` | Whole number, 18 to 120 |",
+        "| `plan` | Required, one of `free`, `pro`, `enterprise` |",
+        "| `is_active` | Required, true or false |",
+        "| `signup_date` | Required, `YYYY-MM-DD`, from 2020-01-01 to 2026-12-31 |",
+        "| `website` | Optional, a link starting with http:// or https:// |",
+        "",
+        "Rows are data rows starting at 1 (the header is not counted).",
+        "",
+        f"## Issues in customers_partial.csv ({len(partial)})",
+        "",
+        *issue_table(partial),
+        "",
+        f"## Issues in customers_dirty.csv ({len(dirty)})",
+        "",
+        *issue_table(dirty),
+    ]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def main() -> None:
+    clean = make_clean_rows()
+    partial, partial_expected = apply_changes(clean, PARTIAL_CHANGES)
+    dirty, dirty_expected = apply_changes(clean, DIRTY_CHANGES)
+    dirty.append(dict(dirty[DUPLICATE_OF_ROW - 1]))
+    dirty_expected.append((len(dirty), "-", "duplicate_row", f"Exact copy of row {DUPLICATE_OF_ROW}"))
+
+    write_csv(HERE / "customers_clean.csv", clean)
+    write_csv(HERE / "customers_partial.csv", partial)
+    write_csv(HERE / "customers_dirty.csv", dirty)
+    write_readme(HERE / "README.md", partial_expected, dirty_expected)
+    print(f"Wrote clean (0 issues), partial ({len(partial_expected)}), dirty ({len(dirty_expected)}).")
+
+
+if __name__ == "__main__":
+    main()
